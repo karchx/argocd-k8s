@@ -19,7 +19,7 @@ spec:
       containers:
         - name: test-app
           image: veeranarni/hotstar:latest
-          imagePullPolicy: "IfNotExist"
+          imagePullPolicy: "IfNotPresent"
           ports:
             - containerPort: 3000
 
