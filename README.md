@@ -3,9 +3,9 @@
 ├── cmd/
 │   ├── auth/              # main de auth service
 │   │   └── main.go
-│   ├── order/              # main de user service
+│   ├── order/              # main de order service
 │   │   └── main.go
-│   └── gateway/           # si tenés un API gateway
+│   └── gateway/        
 │       └── main.go
 │
 ├── internal/
