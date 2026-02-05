@@ -1,0 +1,5 @@
+(executable
+ (public_name funny)
+ (name main)
+ (libraries funny lwt caqti caqti-driver-postgresql caqti-lwt caqti-lwt.unix)
+ (preprocess (pps lwt_ppx)))
