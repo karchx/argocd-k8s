@@ -19,14 +19,22 @@ let () =
     match conn_res with
     | Error err -> Lwt.fail (Failure (Caqti_error.show err))
     | Ok conn ->
-        let headers, rows = Fs.parse_csv "../source/test.csv" in
+        let headers, rows = Fs.parse_csv "../source/PSCompPars_2026.02.07_16.31.28.csv" in
+        (* let headers, rows = Fs.parse_csv "../source/test.csv" in *)
         let schema = Ast.infer_schema rows |> Array.to_list in
         let create_sql = Ast.generate_sql "asteroids" headers schema in
         let insert_sql = Ast.generate_insert_sql "asteroids" headers rows in
+        let schema_spark = Ast.generate_json_schema headers schema in
+        Fs.write_file "schema_spark.json" schema_spark;
         let* _ = create_asteroids_table conn create_sql in
         Printf.printf "Table created successfully.\n";
-        let* _ = insert_asteroid conn insert_sql in
-        Printf.printf "Data inserted successfully.\n";
-        Lwt.return () 
+        let* insert_res = insert_asteroid conn insert_sql in
+        match insert_res with
+        | Error err -> 
+            Fs.log_error ~max_len:5000 "error.log" err;
+            Lwt.fail (Failure ("error inserting data: "))
+        | Ok () ->
+            Printf.printf "Data inserted successfully.\n";
+            Lwt.return ()
   )
 

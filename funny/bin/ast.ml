@@ -11,26 +11,35 @@ type dtype =
 let promote a b =
     match a, b with
     | Null, x | x, Null -> x
+    | Bool, Bool -> Bool
+
     | Int, Int -> Int
     | Int, Long | Long, Int -> Long
+
     | (Int | Long) , Double | Double, (Int | Long) -> Double
-    | Bool, Bool -> Bool
+
+    | Double, Double -> Double
+
     | _, _ -> String
 
+let is_bool = function "true" | "false" -> true | _ -> false
+
+let looks_float s =
+    String.contains s '.' || String.exists ((=) 'e') s || String.exists ((=) 'E') s
+
+let normalize s = String.trim s
+
 let infer_value s =
-    if s = "" then Null
-    else if s = "true" || s = "false" then Bool
-    else
-       try
-        let i = Int64.of_string s in
-        if i >= Int64.of_int min_int && i <= Int64.of_int max_int
-        then Int else Long
-       with _ ->
-            try
-                ignore (float_of_string s);
-                Double
-            with _ ->
-                String
+    match s with
+    | "" -> Null
+    | s when is_bool s -> Bool
+    | s when looks_float s -> Double 
+    | s ->
+         (match Int64.of_string_opt s with
+         | Some i when (i >= Int64.of_int min_int && i <= Int64.of_int max_int) -> Int
+         | Some _ -> Long
+         | None -> String
+         )
 
 let infer_schema rows =
     (*let cols = List.transpose rows in*)
@@ -41,7 +50,8 @@ let infer_schema rows =
         let acc =  Array.make n Null in
         let update row =
             List.iteri 
-                (fun i v -> 
+                (fun i v ->
+                    let v = normalize v in
                     acc.(i) <- promote acc.(i) (infer_value v))
                 row
         in
@@ -49,11 +59,23 @@ let infer_schema rows =
         List.iter update rest;
         acc
 
-let sql_type = function
+(* Generate schema for the data cleaning and transformation layer, usable in Spark. *)
+(* Added support for and additional data source. *)
+let sql_type_schema_spark = function
+  | Bool -> "BooleanType"
+  | Int -> "IntegerType"
+  | Long -> "LongType"
+  | Double -> "DoubleType"
+  | String -> "StringType"
+  | Null -> "StringType"
+  | Date -> "DateType"
+
+(* For PostgreSQL, insert data in string for complex type. *)
+let sql_type_raw = function
   | Bool -> "BOOLEAN"
-  | Int -> "INTEGER"
-  | Long -> "BIGINT"
-  | Double -> "FLOAT8"
+  | Int -> "TEXT"
+  | Long -> "TEXT"
+  | Double -> "TEXT"
   | String -> "TEXT"
   | Null -> "TEXT"
   | Date -> "DATE"
@@ -61,12 +83,20 @@ let sql_type = function
 let generate_sql table headers schema =
     let cols =
         List.map2
-            (fun h t -> Printf.sprintf " %s %s" h (sql_type t))
+            (fun h t -> Printf.sprintf " %s %s" h (sql_type_raw t))
             headers schema
         |> String.concat ",\n"
     in
-    Printf.sprintf "CREATE TABLE IF NOT EXISTS %s (\n%s\n);" table cols
+    Printf.sprintf "CREATE TABLE IF NOT EXISTS %s (\n id UUID PRIMARY KEY DEFAULT uuidv7(),\n%s\n);" table cols
 
+let generate_json_schema headers schema =
+    let fields =
+        List.map2
+            (fun h t -> Printf.sprintf " \"%s\": \"%s\"" h (sql_type_schema_spark t))
+            headers schema
+        |> String.concat ",\n"
+    in
+    Printf.sprintf "{\n%s\n}" fields
 
 let escape_sql s = String.concat "''" (String.split_on_char '\'' s)
 
